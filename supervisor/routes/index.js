@@ -5,6 +5,10 @@ var express = require('express');
 var router = express.Router();
 var iothub = require('azure-iothub');
 var registry = iothub.Registry.fromConnectionString(process.env.CS);
+var Client = require('azure-iothub').Client;
+var client = Client.fromConnectionString(process.env.CS);
+
+
 var elevators = [];
 var observed = [];
 
@@ -36,6 +40,20 @@ router.post('/', function (req, res, next) {
     // if new observed elevator, start telemetry
     if (!observed.includes(req.body.device_id)) {
       observed.push(req.body.device_id);
+      var methodName = "start";
+      var methodParams = {
+          methodName: methodName,
+          payload: null,
+          timeoutInSeconds: 30
+      };
+
+      client.invokeDeviceMethod(req.body.device_id, methodParams, function(err, result) {
+        if (err) { 
+            console.error("Direct method error: "+err.message);
+        } else {
+            console.log("Successfully invoked telemetry start on device: " + req.body.device_id);  
+        }
+    });
     }
     console.log(observed)
 
