@@ -1,8 +1,7 @@
 'use strict';
 
 require('dotenv').config();
-const debug = require('debug')('listener')
-
+//var console.log = require('console.log')('supervisor:router');
 var express = require('express');
 var router = express.Router();
 var iothub = require('azure-iothub');
@@ -16,7 +15,7 @@ var listeners = [];
 var keepalive = [];
 
 registry.list(function (err, deviceList) {
-  if (err) debug(err);
+  if (err) console.log(err);
   else
     deviceList.forEach(function (device) {
       devices.push(device.deviceId);
@@ -37,9 +36,9 @@ const stop = (device) => {
 
   client.invokeDeviceMethod(device, methodParams, function (err, result) {
     if (err) {
-      debug('could not stop telemetry on <' + device + '>');
+      console.log('could not stop telemetry on <' + device + '>');
     } else {
-      debug('removed listener from device <' + device + '>');
+      console.log('removed listener from device <' + device + '>');
     }
   });
 }
@@ -48,21 +47,22 @@ const timerMgmt = (listener) => {
   listeners.push(listener);
   let timer = setTimeout(function () {
     let timeout = keepalive.find(el => el.handler === timer['_idleStart']);
-    debug('timeout for timer <' + timeout.timer['_idleStart'] + '>');
-    listeners.splice(listeners.indexOf(timeout.li, 1))
-
-    // remove listener from devices
-    for (let i = 0; i < observed.length; i++) {
-      let idx = observed[i].listeners.indexOf(timeout.li)
-      if (idx > -1) {
-        observed[i].listeners.splice(idx, 1);
-        if (observed[i].listeners.length == 0) {
-          stop(observed[i].device)
+    if (timeout) {
+      console.log('timeout for timer <' + timeout.timer['_idleStart'] + '>');
+      listeners.splice(listeners.indexOf(timeout.li, 1))
+      for (let i = 0; i < observed.length; i++) {
+        let idx = observed[i].listeners.indexOf(timeout.li)
+        if (idx > -1) {
+          observed[i].listeners.splice(idx, 1);
+          if (observed[i].listeners.length == 0) {
+            stop(observed[i].device)
+            i--
+          }
         }
       }
     }
   }, process.env.KEEPALIVE);
-  debug('starting timer <' + timer['_idleStart'] + '>')
+  console.log('starting timer <' + timer['_idleStart'] + '>')
   keepalive.push({
     handler: timer['_idleStart'],
     li: listener,
@@ -72,13 +72,13 @@ const timerMgmt = (listener) => {
 
 router.post('/keepalive', function (req, res, next) {
   let listener = req.body.client_id;
-  debug('keepalive from <' + listener + '>')
+  console.log('keepalive from <' + listener + '>')
   let li = keepalive.find(el => el.li === listener);
-  debug('clear timeout <' + li.timer['_idleStart'] + '>')
+  console.log('clear timeout <' + li.timer['_idleStart'] + '>')
   keepalive.splice(keepalive.indexOf(li))
   clearTimeout(li.timer)
   timerMgmt(listener)
-  res.send('ack');
+  res.status(200).send('done');
 });
 
 router.delete('/', function (req, res, next) {
@@ -90,28 +90,28 @@ router.delete('/', function (req, res, next) {
   else {
     let li = observed.find(el => el.device === device);
     if (li) {
-      debug('Trying to remove <' + listener + '> from device <' + device + '>')
+      console.log('Trying to remove <' + listener + '> from device <' + device + '>')
       let idx = li.listeners.indexOf(listener)
       if (idx == -1)
         res.status(404).send('listener <' + listener + '> not listening to <' + device + '>');
       else {
         li.listeners.splice(idx, 1) // remove listener from device list
         observed.splice(observed.indexOf(li), 1) // remove device from list
-        debug('listeners remaining: ' + li.listeners.length)
+        console.log('listeners remaining: ' + li.listeners.length)
         if (li.listeners.length > 0) {
           let observer = {
             device: device,
             listeners: li.listeners
           }
           observed.push(observer);
-          res.status(200).send('removed listener <' + listener + '> from device <' + device + '>');
+          res.status(200).send('removed listener ' + listener + ' from device ' + device);
         } else {
           stop(device);
-          res.status(200).send('no more listeners <' + listener + '> from device <' + device + '>');
+          res.status(200).send('no more listeners ' + listener + ' from device ' + device);
         }
       }
     } else
-      res.status(404).send('listener <' + listener + '> not listening to <' + device+ '>');
+      res.status(404).send('listener ' + listener + ' not listening to ' + device);
   }
 });
 
@@ -120,9 +120,9 @@ router.post('/', function (req, res, next) {
   let device = req.body.device_id;
 
   if (!listeners.includes(listener)) {
-    debug('create timer for <' + listener+ '>');
+    console.log('create timer for <' + listener + '>');
     timerMgmt(listener);
-  } 
+  }
 
   if (!devices.includes(device))
     // device not provisioned in iot hub
@@ -130,14 +130,14 @@ router.post('/', function (req, res, next) {
   else {
     let li = observed.find(el => el.device === device);
     if (!li) { // new observed device, start telemetry
-      debug('added new device <' + device + '>')
+      console.log('added new device <' + device + '>')
 
       let observer = {
         device: device,
         listeners: [listener],
       }
       observed.push(observer);
-      debug('added new observer <' + observer + '>')
+      console.log('added new observer <' + observer.device + '>')
 
       // start telemetry by invoking direct method
       var methodName = 'start';
@@ -148,22 +148,22 @@ router.post('/', function (req, res, next) {
       };
       client.invokeDeviceMethod(device, methodParams, function (err, result) {
         if (err) {
-          res.status(500).send('could not start telemetry on <' + device + '>');
+          res.status(500).send('could not start telemetry on ' + device);
         } else {
-          res.status(200).send('added listener <' + listener + '> to device <' + device + '>');
+          res.status(200).send('added listener ' + listener + ' to device ' + device);
         }
       });
     } else { // add new listener to device
-      debug('device <' + device + '> already observed');
-      debug(device);
+      console.log('device <' + device + '> already observed');
+      console.log(device);
 
       if (li.listeners.includes(listener)) {
-        debug('listener <' + listener + '> already listed');
-        debug(listener)
-        res.status(500).send('listener <' + listener + 'Z already listening to device <' + device + '>');
+        console.log('listener <' + listener + '> already listed');
+        console.log(listener)
+        res.status(500).send('listener ' + listener + ' already listening to device ' + device);
 
       } else {
-        debug('added listener <' + listener + '> to device <' + device + '>');
+        console.log('added listener <' + listener + '> to device <' + device + '>');
         li.listeners.push(listener);
         observed.splice(observed.indexOf(li), 1)
         let observer = {
@@ -171,8 +171,8 @@ router.post('/', function (req, res, next) {
           listeners: li.listeners
         }
         observed.push(observer)
-        debug('added new observer <' + observer + '>')
-        res.status(200).send('added listener: ' + listener + ' to device: ' + device);
+        console.log('added new observer <' + observer.device + '>')
+        res.status(200).send('added listener ' + listener + ' to device ' + device);
       }
     }
   }

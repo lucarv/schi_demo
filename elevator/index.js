@@ -2,16 +2,12 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 'use strict';
-require('dotenv').config()
-
-var uuid = require('uuid');
+var connectionString = process.argv[2];
 var Protocol = require('azure-iot-device-mqtt').Mqtt;
 var Client = require('azure-iot-device').Client;
 var Message = require('azure-iot-device').Message;
-var connectionString = process.env.CS;
-// fromConnectionString must specify a transport constructor, coming from any transport package.
 var client = Client.fromConnectionString(connectionString, Protocol);
-var observed = false
+var observed = false;
 
 const startTele = (request, response) => {
   observed = true;
